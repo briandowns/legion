@@ -1,0 +1,17 @@
+./*.c
+./*.h
+*.o
+*.so
+*.dynlib
+
+.vscode/*
+
+legion
+legion.core
+
+bin/legion
+bin/legionctl
+bin/
+
+test/test
+.vscode
