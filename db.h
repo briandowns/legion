@@ -32,6 +32,8 @@
 
 #include <sqlite3.h>
 
+#include "node.h"
+
 #define TASK_ID_LEN 37 // UUID + NULL
 #define NODE_ID_LEN 37
 #define SERVICE_ID_LEN 37
@@ -103,8 +105,16 @@ db_init(const char *path);
 void
 db_close(void);
 
+/**
+ * db_node_create creates a new node in the database based on the data given in
+ * node_t. If id isn't NULL, the ID generated for that node is copied into this
+ * user defined buffer.
+ */
 int
-db_node_create(const node_t *node);
+db_node_create(const node_t *node, char *id);
+
+int
+db_node_create_heartbeat(const char *id, const node_capacity_t *cap);
 
 int
 db_node_get(const char *id, node_t *out_node);

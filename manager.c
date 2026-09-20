@@ -231,19 +231,22 @@ register_handler(papago_request_t *req, papago_response_t *res,
         return;
     }
 
-
     register_msg_t reg_msg;
+    node_capacity_t node_capacity;
     memset(&reg_msg, 0, sizeof(register_msg_t));
+    memset(&node_capacity, 0, sizeof(node_capacity_t));
 
+    json_t node_cap_t;
     json_t *labels_array = NULL;
     int ret = json_unpack(root,
-        "{s:s, s:s, s:i, s:s}", 
+        "{s:s, s:s, s:i, s:s, s:O}", 
             "hostname", &reg_msg.payload.hostname,
             "listen_addr", &reg_msg.payload.listen_addr,
             "status", &reg_msg.payload.status,
             "podman_version", &reg_msg.payload.podman_version,
             "labels", &labels_array,
-            "label_count", &reg_msg.payload.label_count);
+            "label_count", &reg_msg.payload.label_count,
+            "capacity", &node_cap_t);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
             "json_unpack failed to map all fields"));
@@ -262,7 +265,23 @@ register_handler(papago_request_t *req, papago_response_t *res,
         }
     }
 
-    s_log(S_LOG_DEBUG, s_log_string("msg", "received register message"),
+    ret = json_unpack(&node_cap_t,
+        "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}", 
+            "cpu_cores", &node_capacity.cpu_cores,
+            "load_avg_1m", &node_capacity.load_avg_1m,
+            "load_avg_5m", &node_capacity.load_avg_5m,
+            "load_avg_15m", &node_capacity.load_avg_15m,
+            "cpu_cores", &node_capacity.mem_total_bytes,
+            "cpu_cores", &node_capacity.mem_available_bytes,
+            "cpu_cores", &node_capacity.disk_total_bytes,
+            "cpu_cores", &node_capacity.disk_available_bytes);
+    if (ret != 0) {
+        s_log(S_LOG_ERROR, s_log_string("msg",
+            "json_unpack failed to map all fields"));
+        return;
+    }
+
+    s_log(S_LOG_INFO, s_log_string("msg", "received register message"),
         s_log_string("hostname", reg_msg.payload.hostname),
         s_log_int("label_count", reg_msg.payload.label_count),
         s_log_string("podman_version", reg_msg.payload.podman_version));
@@ -270,14 +289,27 @@ register_handler(papago_request_t *req, papago_response_t *res,
     reg_msg.payload.status = NODE_READY;
     reg_msg.payload.last_heartbeat_at = time(NULL);
 
-    if (db_node_create(&reg_msg.payload) != 0) {
+    char node_id[NODE_ID_LEN];
+    if (db_node_create(&reg_msg.payload, node_id) != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
             "failed to create node in database"));
-    } else {
-        s_log(S_LOG_INFO,
-            s_log_string("msg", "node registered successfully"),
-            s_log_string("hostname", reg_msg.payload.hostname));
     }
+
+    node_t node;
+    if (db_node_get(node_id, &node) != 0) {
+        papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
+        papago_res_send(res, ERR_INTERNAL_SERVER);
+        return;
+    }
+
+    if (db_node_create_heartbeat(node_id, &node_capacity) != 0) {
+        s_log(S_LOG_ERROR, s_log_string("msg", "failed to store heartbeat")); 
+        return;
+    }
+    s_log(S_LOG_INFO,
+        s_log_string("msg", "node registered successfully"),
+        s_log_string("hostname", reg_msg.payload.hostname));
+
     json_decref(root);
 
     papago_res_header(res, PAPAGO_REQUEST_HEADER_CONTENT_TYPE, "application/x-pem-file");
@@ -339,7 +371,7 @@ node_heartbeat_handler(papago_request_t *req, papago_response_t *res,
         return;
     }
 
-    ret = db_node_create_heartbeat(id, node_capacity);
+    ret = db_node_create_heartbeat(id, &node_capacity);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg", "failed to store heartbeat")); 
         return;

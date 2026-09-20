@@ -207,7 +207,7 @@ node_labels_load(node_t *node)
 }
 
 int
-db_node_create(const node_t *node)
+db_node_create(const node_t *node, char *id)
 {
     const char *sql =
         "INSERT INTO nodes (id, hostname, listen_addr, status, last_heartbeat_at) "
@@ -232,8 +232,17 @@ db_node_create(const node_t *node)
         sqlite3_finalize(stmt);
         return 1;
     }
-
     sqlite3_finalize(stmt);
+
+    if (id != NULL) {
+        if (sizeof(id) != NODE_ID_LEN) {
+            fprintf(stderr, "error: id not equal NODE_ID_LEN\n");
+            sqlite3_finalize(stmt);
+            return 1;
+        }
+        memset(id, 0, NODE_ID_LEN);
+        snprintf(id, NODE_ID_LEN, "%s", node->id);
+    }
 
     return node_labels_replace(node);
 }
@@ -286,7 +295,7 @@ db_node_create_heartbeat(const char *id, const node_capacity_t *cap)
 
     sqlite3_bind_text(stmt, 1, id, -1, SQLITE_STATIC);
     sqlite3_bind_int64(stmt, 2, (sqlite3_int64)now);
-    sqlite3_bind_int(stmt, 3, cap->cpu_logical_cores);
+    sqlite3_bind_int(stmt, 3, cap->cpu_cores);
     sqlite3_bind_double(stmt, 4, cap->load_avg_1m);
     sqlite3_bind_double(stmt, 5, cap->load_avg_5m);
     sqlite3_bind_double(stmt, 6, cap->load_avg_15m);
