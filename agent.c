@@ -226,13 +226,15 @@ agent_bootstrap(const agent_config_t *config)
         }
 
         json_error_t error;
+        json_t *labels = json_pack("[s, s]", "region=us-east", "env=prod");
+
         json_t *post_json = json_pack_ex(&error, 0,
-            "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
+            "{s:s, s:s, s:i, s:s, s:o, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
             "hostname", hostname,
             "listen_addr", config->listen_addr,
             "status", NODE_READY,
             "podman_version", "4.0.0",
-            "labels", "region=us-east env=prod",
+            "labels", labels,
             "label_count", 2,
             "capacity", 
             "cpu_cores", node_cap.cpu_cores,
@@ -240,9 +242,9 @@ agent_bootstrap(const agent_config_t *config)
             "load_avg_5m", node_cap.load_avg_5m,
             "load_avg_15m", node_cap.load_avg_15m,
             "mem_total_bytes", node_cap.mem_total_bytes,
-            "mem_total_available", node_cap.mem_available_bytes,
+            "mem_available_bytes", node_cap.mem_available_bytes,
             "disk_total_bytes", node_cap.disk_total_bytes,
-            "disk_total_available", node_cap.disk_available_bytes);
+            "disk_available_bytes", node_cap.disk_available_bytes);
         if (post_json == NULL) {
             s_log(S_LOG_ERROR,
                 s_log_string("component", "agent"),

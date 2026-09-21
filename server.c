@@ -238,7 +238,8 @@ register_handler(papago_request_t *req, papago_response_t *res,
 
     json_t *labels_array = NULL;
     int ret = json_unpack_ex(root, &error, 0,
-        "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}", 
+        //"{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}", 
+         "{s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
             "hostname", &reg_msg.payload.hostname,
             "listen_addr", &reg_msg.payload.listen_addr,
             "status", &reg_msg.payload.status,
@@ -246,14 +247,14 @@ register_handler(papago_request_t *req, papago_response_t *res,
             "labels", &labels_array,
             "label_count", &reg_msg.payload.label_count,
             "capacity", 
-            "cpu_cores", node_capacity.cpu_cores,
-            "load_avg_1m", node_capacity.load_avg_1m,
-            "load_avg_5m", node_capacity.load_avg_5m,
-            "load_avg_15m", node_capacity.load_avg_15m,
-            "mem_total_bytes", node_capacity.mem_total_bytes,
-            "mem_available_bytes", node_capacity.mem_available_bytes,
-            "disk_total_bytes", node_capacity.disk_total_bytes,
-            "disk_available_bytes", node_capacity.disk_available_bytes);
+            "cpu_cores", &node_capacity.cpu_cores,
+            "load_avg_1m", &node_capacity.load_avg_1m,
+            "load_avg_5m", &node_capacity.load_avg_5m,
+            "load_avg_15m", &node_capacity.load_avg_15m,
+            "mem_total_bytes", &node_capacity.mem_total_bytes,
+            "mem_available_bytes", &node_capacity.mem_available_bytes,
+            "disk_total_bytes", &node_capacity.disk_total_bytes,
+            "disk_available_bytes", &node_capacity.disk_available_bytes);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
             "json_unpack failed to map all register fields"));
@@ -279,6 +280,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
                 reg_msg.payload.labels[index][LABEL_LEN - 1] = '\0';
             }
         }
+        json_decref(labels_array);
     }
 
     s_log(S_LOG_INFO, s_log_string("msg", "received register message"),
@@ -293,10 +295,16 @@ register_handler(papago_request_t *req, papago_response_t *res,
     if (db_node_create(&reg_msg.payload, node_id) != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
             "failed to create node in database"));
+        papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
+        papago_res_send(res, ERR_INTERNAL_SERVER);
+        return;
     }
+    printf("id: %s\n", node_id);
 
     node_t node;
     if (db_node_get(node_id, &node) != 0) {
+        s_log(S_LOG_ERROR, s_log_string("msg",
+            "failed to add node capacity in database"));
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
         return;

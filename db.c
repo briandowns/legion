@@ -52,7 +52,7 @@ static const char *SCHEMA_SQL =
 
     "CREATE TABLE IF NOT EXISTS nodes ("
     "  id TEXT PRIMARY KEY,"
-    "  hostname TEXT NOT NULL,"
+    "  hostname TEXT NOT NULL UNIQUE,"
     "  listen_addr TEXT NOT NULL,"
     "  status INTEGER NOT NULL DEFAULT 0,"
     "  last_heartbeat_at INTEGER NOT NULL DEFAULT 0"
@@ -235,11 +235,6 @@ db_node_create(const node_t *node, char *id)
     sqlite3_finalize(stmt);
 
     if (id != NULL) {
-        if (sizeof(id) != NODE_ID_LEN) {
-            fprintf(stderr, "error: id not equal NODE_ID_LEN\n");
-            sqlite3_finalize(stmt);
-            return 1;
-        }
         memset(id, 0, NODE_ID_LEN);
         snprintf(id, NODE_ID_LEN, "%s", node->id);
     }
