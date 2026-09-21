@@ -25,15 +25,19 @@
  * SUCH DAMAGE.
  */
 
-#include <papago.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/event.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include <curl/curl.h>
 #include <jansson.h>
 #include <logger.h>
+#include <papago.h>
 
 #include "db.h"
 #include "node.h"
@@ -41,19 +45,74 @@
 
 #define TOKEN_POST_PAYLOAD "{\"token\": \"%s\"}"
 
+static int kq;
 CURL *curl;
 
 int
 worker_init(void)
 {
+    kq = kqueue();
+    if (kq == -1) {
+        perror("kqueue");
+        return 1;
+    }
+
     return 0;
 }
+
+void*
+run_healthcheck(void *data)
+{
+    (void)data;
+
+    struct kevent event;
+    struct kevent fired;
+
+    EV_SET(&event, 1, EVFILT_TIMER, EV_ADD | EV_ENABLE, 0, 30000, NULL);
+
+    if (kevent(kq, &event, 1, NULL, 0, NULL) == -1) {
+        perror("kevent");
+        close(kq);
+        return NULL;
+    }
+
+    while (true) {
+        if (kevent(kq, NULL, 0, &fired, 1, NULL) == -1) {
+            perror("kevent");
+            break;
+        }
+
+        node_capacity_t node_cap;
+        char err[1024];
+        int ret = node_capacity(&node_cap, err, 1024);
+        if (ret != 0) {
+            s_log(S_LOG_ERROR, s_log_string("msg", err));
+            break;
+        }
+
+        printf("XXX - CPU cores: %d\n", node_cap.cpu_cores);
+    }
+
+    close(kq);
+
+    return NULL;
+}
+
 
 int
 worker_start(const worker_config_t *config)
 {
     (void)config;
-    // put webserver here
+
+    pthread_t healthcheck_thread;
+
+    if (pthread_create(&healthcheck_thread, NULL, run_healthcheck, NULL) != 0) {
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "failed to create healthcheck_thread thread"));
+        return 1;
+    }
+
+    pthread_join(healthcheck_thread, NULL);
 
     return 0;
 }
@@ -159,15 +218,24 @@ worker_bootstrap(const worker_config_t *config)
             return 1;
         }
 
+        node_capacity_t node_cap;
+        char err[1024];
+        if (node_capacity(&node_cap, err, 1024) != 0) {
+            s_log(S_LOG_ERROR, s_log_string("msg", err));
+            return 1;
+        }
+
         json_error_t error;
-        json_t *post_json = json_pack_ex(&error, 0, 
-            "{s:s, s:s, s:i, s:s, s:s, s:i}",
+        json_t *post_json = json_pack_ex(&error, 0,
+            "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i}}",
             "hostname", hostname,
             "listen_addr", config->listen_addr,
             "status", NODE_READY,
             "podman_version", "4.0.0",
             "labels", "region=us-east env=prod",
-            "label_count", 2);
+            "label_count", 2,
+            "capacity", 
+            "cpu_cores", node_cap.cpu_cores);
 
         if (post_json == NULL) {
             s_log(S_LOG_ERROR,
@@ -179,6 +247,7 @@ worker_bootstrap(const worker_config_t *config)
             curl_easy_cleanup(curl);
             return 1;
         }
+
         char *post_fields = json_dumps(post_json, 0);
         if (post_fields == NULL) {
             s_log(S_LOG_ERROR,
@@ -189,14 +258,16 @@ worker_bootstrap(const worker_config_t *config)
             curl_easy_cleanup(curl);
             return 1;
         }
+        printf("XXX - Post Fields: %s\n", post_fields);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_fields);
-        json_decref(post_json);
+        //json_decref(post_json);
 
         CURLcode res = curl_easy_perform(curl);
-        if(res != CURLE_OK) {
+        if (res != CURLE_OK) {
             s_log(S_LOG_ERROR,
                 s_log_string("msg", "failed to perform curl request"),
                 s_log_string("error", curl_easy_strerror(res)));
+            json_decref(post_json);
             fclose(fp);
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);

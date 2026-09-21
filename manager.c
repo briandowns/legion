@@ -361,10 +361,10 @@ node_heartbeat_handler(papago_request_t *req, papago_response_t *res,
             "load_avg_1m", &node_capacity.load_avg_1m,
             "load_avg_5m", &node_capacity.load_avg_5m,
             "load_avg_15m", &node_capacity.load_avg_15m,
-            "cpu_cores", &node_capacity.mem_total_bytes,
-            "cpu_cores", &node_capacity.mem_available_bytes,
-            "cpu_cores", &node_capacity.disk_total_bytes,
-            "cpu_cores", &node_capacity.disk_available_bytes);
+            "mem_total_bytes", &node_capacity.mem_total_bytes,
+            "mem_available_bytes", &node_capacity.mem_available_bytes,
+            "disk_total_bytes", &node_capacity.disk_total_bytes,
+            "disk_available_bytes", &node_capacity.disk_available_bytes);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
             "json_unpack failed to map all fields"));

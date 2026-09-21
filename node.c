@@ -387,7 +387,7 @@ collect_memory(uint64_t *total, uint64_t *available)
     }
     *total = (uint64_t)physmem;
 
-    // Approximate "available" as free + inactive + cache pages.
+    // approximate "available" as free + inactive + cache pages.
     // v_page_size and the vm.stats.vm.* counters give page counts.
     u_int page_size = 0;
     len = sizeof(page_size);
@@ -421,34 +421,38 @@ collect_disk(const char *path, uint64_t *total, uint64_t *available)
     }
 
     *total = (uint64_t)vfs.f_blocks * vfs.f_frsize;
-    *available = (uint64_t)vfs.f_bavail * vfs.f_frsize; /* unprivileged-usable space */
+    *available = (uint64_t)vfs.f_bavail * vfs.f_frsize;
 
     return 0;
 }
 
-/**
- * collect_node_capacity
- */ 
 int
-collect_node_capacity(node_capacity_t *cap, const char *podman_storage_path)
+node_capacity(node_capacity_t *cap, char *err, const size_t err_size)
 {
+    if (err == NULL) {
+        return 1;
+    }
+
     memset(cap, 0, sizeof(*cap));
 
     cap->cpu_cores = collect_cpu_cores();
 
     if (collect_load_avg(&cap->load_avg_1m, &cap->load_avg_5m,
             &cap->load_avg_15m) != 0) {
-        fprintf(stderr, "warning: getloadavg failed: %s\n", strerror(errno));
+        snprintf(err, err_size, "get load avg failed: %s", strerror(errno));
+        return 1;
     }
 
     if (collect_memory(&cap->mem_total_bytes, &cap->mem_available_bytes) != 0) {
-        fprintf(stderr, "warning: memory sysctl failed\n");
+        snprintf(err, err_size, "memory sysctl failed: %s", strerror(errno));
+        return 1;
     }
 
-    if (collect_disk(podman_storage_path, &cap->disk_total_bytes,
+    // TODO(briandowns) make this path a config value
+    if (collect_disk("/var/db/containers/storage", &cap->disk_total_bytes,
             &cap->disk_available_bytes) != 0) {
-        fprintf(stderr, "warning: statvfs(%s) failed: %s\n",
-            podman_storage_path, strerror(errno));
+        snprintf(err, err_size, "statvfs failed: %s", strerror(errno));
+        return 1;
     }
 
     return 0;

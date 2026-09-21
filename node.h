@@ -28,6 +28,7 @@
 #ifndef __NODE_H
 #define __NODE_H
 
+#include <stdint.h>
 #include <sys/stat.h>
 
 #define TOKEN_ID_CHARS 6
@@ -82,5 +83,11 @@ node_token_verify(const char *token);
  */
 int
 node_token_verify_ca_hash(const char *token, const char *ca_cert_path);
+
+/**
+ * collect_node_capacity
+ */ 
+int
+node_capacity(node_capacity_t *cap, char *err, const size_t err_size);
 
 #endif /** end __NODE_H */

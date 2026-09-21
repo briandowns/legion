@@ -28,9 +28,7 @@
 #ifndef __WORKER_H
 #define __WORKER_H
 
-#define TOKEN_ID_CHARS 6
-#define TOKEN_SECRET_CHARS 16
-#define TOKEN_MAX_LEN 256  // K10 + 64 hex + "::server:" + id.secret
+#include "node.h"
 
 typedef struct {
     char *server;

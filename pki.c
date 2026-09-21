@@ -212,23 +212,23 @@ create_ca_certificate(EVP_PKEY *ca_key, int years)
 
     if (X509_set_version(cert, 2) != 1) {
         openssl_error("X509_set_version failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (set_random_serial(cert) != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     // valid from now for `years` years.
     if (X509_gmtime_adj(X509_getm_notBefore(cert), 0) == NULL) {
         openssl_error("X509_gmtime_adj notBefore failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_gmtime_adj(X509_getm_notAfter(cert),
             (long)years * 365L * 24L * 60L * 60L) == NULL) {
         openssl_error("X509_gmtime_adj notAfter failed");
-        goto fail;
+        goto FAIL;
     }
 
     // Subject: O=swarmd, CN=swarmd-ca. Self-signed, so issuer = subject.
@@ -242,31 +242,31 @@ create_ca_certificate(EVP_PKEY *ca_key, int years)
 
     if (X509_set_issuer_name(cert, name) != 1) {
         openssl_error("X509_set_issuer_name failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_set_pubkey(cert, ca_key) != 1) {
         openssl_error("X509_set_pubkey failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (add_extension(cert, cert, NID_basic_constraints,
             "critical,CA:TRUE") != 0)
-        goto fail;
+        goto FAIL;
 
     if (add_extension(cert, cert, NID_key_usage,
             "critical,keyCertSign,cRLSign") != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_sign(cert, ca_key, EVP_sha256()) <= 0) {
         openssl_error("X509_sign CA certificate failed");
-        goto fail;
+        goto FAIL;
     }
 
     return cert;
 
-fail:
+FAIL:
     X509_free(cert);
     return NULL;
 }
@@ -292,17 +292,17 @@ create_leaf_certificate(EVP_PKEY *key, EVP_PKEY *ca_key, X509 *ca_cert,
     X509_set_version(cert, 2);
 
     if (set_random_serial(cert) != 0)
-        goto fail;
+        goto FAIL;
 
     if (X509_gmtime_adj(X509_getm_notBefore(cert), 0) == NULL) {
         openssl_error("notBefore failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_gmtime_adj(X509_getm_notAfter(cert),
             (long)days * 24L * 60L * 60L) == NULL) {
         openssl_error("notAfter failed");
-        goto fail;
+        goto FAIL;
     }
 
     // Subject: O=legiond, CN=<common_name> (node hostname or id).
@@ -316,22 +316,22 @@ create_leaf_certificate(EVP_PKEY *key, EVP_PKEY *ca_key, X509 *ca_cert,
 
     if (X509_set_issuer_name(cert, X509_get_subject_name(ca_cert)) != 1) {
         openssl_error("X509_set_issuer_name failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_set_pubkey(cert, key) != 1) {
         openssl_error("X509_set_pubkey failed");
-        goto fail;
+        goto FAIL;
     }
 
     if (add_extension(ca_cert, cert, NID_basic_constraints,
             "critical,CA:FALSE") != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     if (add_extension(ca_cert, cert, NID_key_usage,
             "critical,digitalSignature,keyEncipherment") != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     // both serverAuth and clientAuth: the manager uses this cert
@@ -339,7 +339,7 @@ create_leaf_certificate(EVP_PKEY *key, EVP_PKEY *ca_key, X509 *ca_cert,
     // out over mTLS.
     if (add_extension(ca_cert, cert, NID_ext_key_usage,
             "serverAuth,clientAuth") != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     // Subject Alternative Name. Modern TLS clients validate the
@@ -353,17 +353,17 @@ create_leaf_certificate(EVP_PKEY *key, EVP_PKEY *ca_key, X509 *ca_cert,
     }
 
     if (add_extension(ca_cert, cert, NID_subject_alt_name, san_value) != 0) {
-        goto fail;
+        goto FAIL;
     }
 
     if (X509_sign(cert, ca_key, EVP_sha256()) <= 0) {
         openssl_error("X509_sign failed");
-        goto fail;
+        goto FAIL;
     }
 
     return cert;
 
-fail:
+FAIL:
     X509_free(cert);
     return NULL;
 }
