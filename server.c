@@ -42,7 +42,7 @@
 #include <papago.h>
 
 #include "db.h"
-#include "manager.h"
+#include "server.h"
 #include "node.h"
 #include "pki.h"
 
@@ -61,7 +61,7 @@ typedef struct {
 } register_msg_t;
 
 int
-manager_init(void)
+server_init(void)
 {
     kq = kqueue();
     if (kq == -1) {
@@ -69,41 +69,41 @@ manager_init(void)
         return 1;
     }
 
-    db_init(DATA_DIR "/manager/legion.db");
+    db_init(DATA_DIR "/server/legion.db");
 
     return 0;
 }
 
 int
-manager_bootstrap(void)
+server_bootstrap(void)
 {
     mode_t mode = 0750;
-    if (node_create_path(DATA_DIR "/manager/tls", mode) == 0) {
+    if (node_create_path(DATA_DIR "/server/tls", mode) == 0) {
         s_log(S_LOG_INFO, s_log_string("msg", "created directory path"),
-            s_log_string("path", DATA_DIR "/manager/tls"));
+            s_log_string("path", DATA_DIR "/server/tls"));
     } else {
         s_log(S_LOG_ERROR, s_log_string("msg", "failed to create directory path"),
-            s_log_string("path", DATA_DIR "/manager/tls"));
+            s_log_string("path", DATA_DIR "/server/tls"));
         return 1;
     }
 
     if (node_create_path(DATA_DIR "/node", mode) == 0) {
         s_log(S_LOG_INFO, s_log_string("msg", "created directory path"),
-            s_log_string("path", DATA_DIR "/manager/tls"));
+            s_log_string("path", DATA_DIR "/server/tls"));
     } else {
         s_log(S_LOG_ERROR, s_log_string("msg", "failed to create directory path"),
-            s_log_string("path", DATA_DIR "/manager/tls"));
+            s_log_string("path", DATA_DIR "/server/tls"));
         return 1;
     }
 
     int ret = 0;
-    if (!FILE_EXISTS(DATA_DIR "/manager/tls/ca.key") ||
-        !FILE_EXISTS(DATA_DIR "/manager/tls/ca.crt")) {
+    if (!FILE_EXISTS(DATA_DIR "/server/tls/ca.key") ||
+        !FILE_EXISTS(DATA_DIR "/server/tls/ca.crt")) {
             s_log(S_LOG_INFO, 
                 s_log_string("msg", "generating CA certificate and key"));
 
-        ret = pki_generate_ca(DATA_DIR "/manager/tls/ca.key",
-            DATA_DIR "/manager/tls/ca.crt", 10);
+        ret = pki_generate_ca(DATA_DIR "/server/tls/ca.key",
+            DATA_DIR "/server/tls/ca.crt", 10);
         if (ret != 0) {
             s_log(S_LOG_ERROR,
                 s_log_string("msg", "error generating CA certificate"));
@@ -111,26 +111,26 @@ manager_bootstrap(void)
         }
 
         s_log(S_LOG_INFO, 
-            s_log_string("msg", "generating manager certificate and key"));
+            s_log_string("msg", "generating server certificate and key"));
 
-        ret = pki_generate_cert_and_key(DATA_DIR "/manager/tls/ca.key",
-            DATA_DIR "/manager/tls/ca.crt", "legion-manager", NULL, 3650,
-            DATA_DIR "/manager/tls/server.key",
-            DATA_DIR "/manager/tls/server.crt");
+        ret = pki_generate_cert_and_key(DATA_DIR "/server/tls/ca.key",
+            DATA_DIR "/server/tls/ca.crt", "legion-server", NULL, 3650,
+            DATA_DIR "/server/tls/server.key",
+            DATA_DIR "/server/tls/server.crt");
         if (ret != 0) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating manager certificate and key"));
+                s_log_string("msg", "error generating server certificate and key"));
             return 1;
         }
     }
 
     if (!FILE_EXISTS(DATA_DIR "/node/token")) {
         s_log(S_LOG_INFO, 
-            s_log_string("msg", "generating manager join token"));
+            s_log_string("msg", "generating server join token"));
 
-        if (node_token_generate(DATA_DIR "/manager/tls/ca.crt") != 0) {
+        if (node_token_generate(DATA_DIR "/server/tls/ca.crt") != 0) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating manager join token"));
+                s_log_string("msg", "error generating server join token"));
             return 1;
         }
     }
@@ -236,49 +236,49 @@ register_handler(papago_request_t *req, papago_response_t *res,
     memset(&reg_msg, 0, sizeof(register_msg_t));
     memset(&node_capacity, 0, sizeof(node_capacity_t));
 
-    json_t node_cap_t;
     json_t *labels_array = NULL;
-    int ret = json_unpack(root,
-        "{s:s, s:s, s:i, s:s, s:O}", 
+    int ret = json_unpack_ex(root, &error, 0,
+        "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}", 
             "hostname", &reg_msg.payload.hostname,
             "listen_addr", &reg_msg.payload.listen_addr,
             "status", &reg_msg.payload.status,
             "podman_version", &reg_msg.payload.podman_version,
             "labels", &labels_array,
             "label_count", &reg_msg.payload.label_count,
-            "capacity", &node_cap_t);
+            "capacity", 
+            "cpu_cores", node_capacity.cpu_cores,
+            "load_avg_1m", node_capacity.load_avg_1m,
+            "load_avg_5m", node_capacity.load_avg_5m,
+            "load_avg_15m", node_capacity.load_avg_15m,
+            "mem_total_bytes", node_capacity.mem_total_bytes,
+            "mem_available_bytes", node_capacity.mem_available_bytes,
+            "disk_total_bytes", node_capacity.disk_total_bytes,
+            "disk_available_bytes", node_capacity.disk_available_bytes);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
-            "json_unpack failed to map all fields"));
+            "json_unpack failed to map all register fields"));
+        printf("Unpack Error Status: %d\n", ret);
+        printf("Error Message: %s\n", error.text);
+        printf("Error Source: %s\n", error.source);
+        printf("Error Line/Col: %d:%d\n", error.line, error.column);
+        papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
+        papago_res_send(res, ERR_INTERNAL_SERVER);
         return;
     }
-
+    
     if (json_is_array(labels_array)) {
         size_t index;
         json_t *value;
 
         json_array_foreach(labels_array, index, value) {
+            if (index >= MAX_LABELS) {
+                break;
+            }
             if (json_is_string(value)) {
                 strncpy(reg_msg.payload.labels[index], json_string_value(value), LABEL_LEN - 1);
                 reg_msg.payload.labels[index][LABEL_LEN - 1] = '\0';
             }
         }
-    }
-
-    ret = json_unpack(&node_cap_t,
-        "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}", 
-            "cpu_cores", &node_capacity.cpu_cores,
-            "load_avg_1m", &node_capacity.load_avg_1m,
-            "load_avg_5m", &node_capacity.load_avg_5m,
-            "load_avg_15m", &node_capacity.load_avg_15m,
-            "cpu_cores", &node_capacity.mem_total_bytes,
-            "cpu_cores", &node_capacity.mem_available_bytes,
-            "cpu_cores", &node_capacity.disk_total_bytes,
-            "cpu_cores", &node_capacity.disk_available_bytes);
-    if (ret != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "json_unpack failed to map all fields"));
-        return;
     }
 
     s_log(S_LOG_INFO, s_log_string("msg", "received register message"),
@@ -313,7 +313,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     json_decref(root);
 
     papago_res_header(res, PAPAGO_REQUEST_HEADER_CONTENT_TYPE, "application/x-pem-file");
-    papago_res_sendfile(register_server, res, DATA_DIR "/manager/tls/ca.crt");
+    papago_res_sendfile(register_server, res, DATA_DIR "/server/tls/ca.crt");
 }
 
 static void
@@ -443,18 +443,18 @@ run_http_server(void *user_data)
 
     papago_config_t register_config = papago_default_config();
     register_config.http_port = 8080;
-    register_config.ca_cert_file = DATA_DIR "/manager/tls/ca.crt";
-    register_config.cert_file = DATA_DIR "/manager/tls/server.crt";
-    register_config.key_file = DATA_DIR "/manager/tls/server.key";
+    register_config.ca_cert_file = DATA_DIR "/server/tls/ca.crt";
+    register_config.cert_file = DATA_DIR "/server/tls/server.crt";
+    register_config.key_file = DATA_DIR "/server/tls/server.key";
     register_config.require_client_cert = false;
     register_config.enable_ssl = true;
     register_config.enable_compression = true;
 
     papago_config_t primary_config = papago_default_config();
     primary_config.http_port = 8181;
-    primary_config.ca_cert_file = DATA_DIR "/manager/tls/ca.crt";
-    primary_config.cert_file = DATA_DIR "/manager/tls/server.crt";
-    primary_config.key_file = DATA_DIR "/manager/tls/server.key";
+    primary_config.ca_cert_file = DATA_DIR "/server/tls/ca.crt";
+    primary_config.cert_file = DATA_DIR "/server/tls/server.crt";
+    primary_config.key_file = DATA_DIR "/server/tls/server.key";
     primary_config.require_client_cert = false;
     primary_config.enable_ssl = true;
     primary_config.enable_compression = true;
@@ -507,10 +507,10 @@ run_http_server(void *user_data)
 }
 
 int
-manager_start(void)
+server_start(void)
 {
     s_log(S_LOG_INFO, 
-        s_log_string("msg", "starting legion manager"));
+        s_log_string("msg", "starting legion server"));
 
     pthread_t timer_thread, http_thread;
 
@@ -533,7 +533,7 @@ manager_start(void)
 }
 
 int
-manager_stop(void)
+server_stop(void)
 {
     close(kq);
     papago_destroy(register_server);

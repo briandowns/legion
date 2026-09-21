@@ -40,7 +40,7 @@ service_cmd(rattler_cmd *cmd, int argc, char **argv)
     RATTLER_UNUSED(cmd);
 
     if (argc < 1) {
-        // run the manager daemon
+        // run the server daemon
         return;
     }
 
@@ -67,7 +67,7 @@ node_cmd(rattler_cmd *cmd, int argc, char **argv)
     RATTLER_UNUSED(cmd);
 
     if (argc < 1) {
-        // run the worker daemon
+        // run the agent daemon
         return;
     }
 

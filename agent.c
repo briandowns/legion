@@ -41,7 +41,7 @@
 
 #include "db.h"
 #include "node.h"
-#include "worker.h"
+#include "agent.h"
 
 #define TOKEN_POST_PAYLOAD "{\"token\": \"%s\"}"
 
@@ -49,7 +49,7 @@ static int kq;
 CURL *curl;
 
 int
-worker_init(void)
+agent_init(void)
 {
     kq = kqueue();
     if (kq == -1) {
@@ -89,8 +89,6 @@ run_healthcheck(void *data)
             s_log(S_LOG_ERROR, s_log_string("msg", err));
             break;
         }
-
-        printf("XXX - CPU cores: %d\n", node_cap.cpu_cores);
     }
 
     close(kq);
@@ -100,7 +98,7 @@ run_healthcheck(void *data)
 
 
 int
-worker_start(const worker_config_t *config)
+agent_start(const agent_config_t *config)
 {
     (void)config;
 
@@ -118,7 +116,7 @@ worker_start(const worker_config_t *config)
 }
 
 int
-worker_stop(void)
+agent_stop(void)
 {
     curl_global_cleanup();
 
@@ -126,25 +124,25 @@ worker_stop(void)
 }
 
 static int
-verify_ca(const char *manager_addr, const char *token,
+verify_ca(const char *server_addr, const char *token,
           const char *ca_path)
 {
     s_log(S_LOG_INFO,
-        s_log_string("msg", "verifying CA hash from manager"),
-        s_log_string("manager_addr", manager_addr));
+        s_log_string("msg", "verifying CA hash from server"),
+        s_log_string("server_addr", server_addr));
 
     int hash_ok = node_token_verify_ca_hash(token, ca_path);
     if (hash_ok < 0) {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "failed to verify CA hash"),
-            s_log_string("manager_addr", manager_addr));
+            s_log_string("server_addr", server_addr));
         unlink(ca_path);
         return 1;
     }
 
     s_log(S_LOG_INFO,
-        s_log_string("msg", "CA hash verified, manager identity confirmed"),
-        s_log_string("manager_addr", manager_addr));
+        s_log_string("msg", "CA hash verified, server identity confirmed"),
+        s_log_string("server_addr", server_addr));
 
     return 0;
 }
@@ -158,17 +156,17 @@ write_to_file_cb(void *data, size_t size, size_t nmemb, void *userp)
 }
 
 int
-worker_bootstrap(const worker_config_t *config)
+agent_bootstrap(const agent_config_t *config)
 {
     mode_t mode = 0750;
-    if (node_create_path(DATA_DIR "/worker/tls", mode) != 0) {
+    if (node_create_path(DATA_DIR "/agent/tls", mode) != 0) {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "failed to create directory path"),
-            s_log_string("path", DATA_DIR "/worker/tls"));
+            s_log_string("path", DATA_DIR "/agent/tls"));
         return 1;
     }
-
-    if (!FILE_EXISTS(DATA_DIR "/worker/tls/ca.crt")) {
+    
+    if (!FILE_EXISTS(DATA_DIR "/agent/tls/ca.crt")) {
         curl = curl_easy_init();
         if (curl == NULL) {
             s_log(S_LOG_ERROR,
@@ -196,11 +194,12 @@ worker_bootstrap(const worker_config_t *config)
         curl_easy_setopt(curl, CURLOPT_POST, 1L);
         curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_to_file_cb);
 
-        FILE *fp = fopen(DATA_DIR "/worker/tls/ca.crt", "wb");
+        FILE *fp = fopen(DATA_DIR "/agent/tls/ca.crt", "wb");
         if (fp == NULL) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "failed to open file for writing"),
-                s_log_string("path", DATA_DIR "/worker/tls/ca.crt"));
+                s_log_string("component", "agent"),
+                s_log_string("msg", "failed to open ca.crt for writing"),
+                s_log_string("path", DATA_DIR "/agent/tls/ca.crt"));
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
             return 1;
@@ -211,23 +210,24 @@ worker_bootstrap(const worker_config_t *config)
 
         if (gethostname(hostname, sizeof(hostname)) != 0) {
             s_log(S_LOG_ERROR,
+                s_log_string("component", "agent"),
                 s_log_string("msg", "failed to get hostname"));
             fclose(fp);
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
             return 1;
         }
-
         node_capacity_t node_cap;
         char err[1024];
         if (node_capacity(&node_cap, err, 1024) != 0) {
-            s_log(S_LOG_ERROR, s_log_string("msg", err));
+            s_log(S_LOG_ERROR, s_log_string("component", "agent"),
+                s_log_string("msg", err));
             return 1;
         }
 
         json_error_t error;
         json_t *post_json = json_pack_ex(&error, 0,
-            "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i}}",
+            "{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
             "hostname", hostname,
             "listen_addr", config->listen_addr,
             "status", NODE_READY,
@@ -235,10 +235,17 @@ worker_bootstrap(const worker_config_t *config)
             "labels", "region=us-east env=prod",
             "label_count", 2,
             "capacity", 
-            "cpu_cores", node_cap.cpu_cores);
-
+            "cpu_cores", node_cap.cpu_cores,
+            "load_avg_1m", node_cap.load_avg_1m,
+            "load_avg_5m", node_cap.load_avg_5m,
+            "load_avg_15m", node_cap.load_avg_15m,
+            "mem_total_bytes", node_cap.mem_total_bytes,
+            "mem_total_available", node_cap.mem_available_bytes,
+            "disk_total_bytes", node_cap.disk_total_bytes,
+            "disk_total_available", node_cap.disk_available_bytes);
         if (post_json == NULL) {
             s_log(S_LOG_ERROR,
+                s_log_string("component", "agent"),
                 s_log_string("msg", "failed to create JSON payload"),
                 s_log_string("error", error.text),
                 s_log_int("line", error.line));
@@ -251,6 +258,7 @@ worker_bootstrap(const worker_config_t *config)
         char *post_fields = json_dumps(post_json, 0);
         if (post_fields == NULL) {
             s_log(S_LOG_ERROR,
+                s_log_string("component", "agent"),
                 s_log_string("msg", "failed to serialize JSON payload"));
             json_decref(post_json);
             fclose(fp);
@@ -258,13 +266,14 @@ worker_bootstrap(const worker_config_t *config)
             curl_easy_cleanup(curl);
             return 1;
         }
-        printf("XXX - Post Fields: %s\n", post_fields);
+
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, post_fields);
-        //json_decref(post_json);
+        json_decref(post_json);
 
         CURLcode res = curl_easy_perform(curl);
         if (res != CURLE_OK) {
             s_log(S_LOG_ERROR,
+                s_log_string("component", "agent"),
                 s_log_string("msg", "failed to perform curl request"),
                 s_log_string("error", curl_easy_strerror(res)));
             json_decref(post_json);
@@ -276,11 +285,12 @@ worker_bootstrap(const worker_config_t *config)
         fclose(fp);
 
         int ret = verify_ca(config->server, config->token,
-            DATA_DIR "/worker/tls/ca.crt");
+            DATA_DIR "/agent/tls/ca.crt");
         if (ret != 0) {
             s_log(S_LOG_ERROR,
+                s_log_string("component", "agent"),
                 s_log_string("msg", "failed to verify CA hash"),
-                s_log_string("manager_addr", config->server));
+                s_log_string("server_addr", config->server));
             curl_slist_free_all(headers);
             curl_easy_cleanup(curl);
             return 1;

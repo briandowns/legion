@@ -387,7 +387,7 @@ collect_memory(uint64_t *total, uint64_t *available)
     }
     *total = (uint64_t)physmem;
 
-    // approximate "available" as free + inactive + cache pages.
+    // Approximate "available" as free + inactive + cache pages.
     // v_page_size and the vm.stats.vm.* counters give page counts.
     u_int page_size = 0;
     len = sizeof(page_size);
@@ -421,37 +421,42 @@ collect_disk(const char *path, uint64_t *total, uint64_t *available)
     }
 
     *total = (uint64_t)vfs.f_blocks * vfs.f_frsize;
-    *available = (uint64_t)vfs.f_bavail * vfs.f_frsize;
+    *available = (uint64_t)vfs.f_bavail * vfs.f_frsize; /* unprivileged-usable space */
 
     return 0;
 }
 
+/**
+ * node_capacity
+ */ 
 int
 node_capacity(node_capacity_t *cap, char *err, const size_t err_size)
 {
     if (err == NULL) {
         return 1;
     }
-
+    
     memset(cap, 0, sizeof(*cap));
+    memset(err, 0, err_size);
 
     cap->cpu_cores = collect_cpu_cores();
 
     if (collect_load_avg(&cap->load_avg_1m, &cap->load_avg_5m,
             &cap->load_avg_15m) != 0) {
-        snprintf(err, err_size, "get load avg failed: %s", strerror(errno));
+        snprintf(err, err_size, "error: get load avg failed: %s", strerror(errno));
         return 1;
     }
 
     if (collect_memory(&cap->mem_total_bytes, &cap->mem_available_bytes) != 0) {
-        snprintf(err, err_size, "memory sysctl failed: %s", strerror(errno));
+        snprintf(err, err_size, "error: memory sysctl failed");
         return 1;
     }
 
-    // TODO(briandowns) make this path a config value
+    // TODO(briandowns) this needs to be a config parameter
     if (collect_disk("/var/db/containers/storage", &cap->disk_total_bytes,
             &cap->disk_available_bytes) != 0) {
-        snprintf(err, err_size, "statvfs failed: %s", strerror(errno));
+        snprintf(err, err_size, "error: statvfs(%s) failed: %s",
+            "/var/db/containers/storage", strerror(errno));
         return 1;
     }
 

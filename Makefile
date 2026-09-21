@@ -28,7 +28,7 @@ MACOS_MANPAGE_LOC = /usr/share/man
 LINUX_MANPAGE_LOC = /usr/share/man/man1
 
 $(BINDIR)/$(BINARY): $(BINDIR) clean
-	$(CC) $(CFLAGS) main.c manager.c node.c pki.c db.c worker.c -o $(BINDIR)/$(BINARY) $(LDFLAGS)
+	$(CC) $(CFLAGS) main.c server.c node.c pki.c db.c agent.c -o $(BINDIR)/$(BINARY) $(LDFLAGS)
 	
 $(BINDIR):
 	mkdir -p $(BINDIR)

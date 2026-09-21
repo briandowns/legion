@@ -25,28 +25,28 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __WORKER_H
-#define __WORKER_H
-
-#include "node.h"
-
-typedef struct {
-    char *server;
-    char *port;
-    char *token;
-    char *listen_addr;
-} worker_config_t;
+#ifndef __SERVER_H
+#define __SERVER_H
 
 int
-worker_init(void);
+server_init(void);
 
 int
-worker_start(const worker_config_t *config);
+server_start(void);
 
 int
-worker_stop(void);
+server_stop(void);
 
 int
-worker_bootstrap(const worker_config_t *config);
+server_bootstrap(void);
 
-#endif /** end __WORKER_H */
+int
+server_token_generate(const char *ca_cert_path);
+
+int
+server_token_verify(const char *token);
+
+int
+server_token_verify_ca_hash(const char *token, const char *ca_cert_path);
+
+#endif /** end __SERVER_H */

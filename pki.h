@@ -49,8 +49,8 @@ pki_generate_ca(const char *ca_key_path, const char *ca_cert_path, int years);
  * a resolvable hostname.
  *
  * The certificate carries both serverAuth and clientAuth extended
- * key usage so the same cert works for the manager's listener and
- * the worker's outbound mTLS connection.
+ * key usage so the same cert works for the server's listener and
+ * the agent's outbound mTLS connection.
  *
  * Returns 0 on success, 1 on failure.
  */

@@ -36,28 +36,28 @@
 #include <papago.h>
 #include <rattler.h>
 
+#include "agent.h"
 #include "db.h"
-#include "manager.h"
-#include "worker.h"
+#include "server.h"
 
 #define STR1(x) #x
 #define STR(x) STR1(x)
 
 enum {
-    LEGION_CMD_MANAGER = 0,
-    LEGION_CMD_WORKER,
+    LEGION_CMD_SERVER = 0,
+    LEGION_CMD_AGENT,
 } ;
 
 static int legion_cmd = -1;
 
 static void
-manager_cmd(rattler_cmd *cmd, int argc, char **argv)
+server_cmd(rattler_cmd *cmd, int argc, char **argv)
 {
     RATTLER_UNUSED(cmd);
 
     if (argc < 1) {
-        manager_init();
-        manager_start();
+        server_init();
+        server_start();
 
         return;
     }
@@ -66,26 +66,26 @@ manager_cmd(rattler_cmd *cmd, int argc, char **argv)
 
     if (strcmp(sub_cmd, "init") == 0) {
         s_log(S_LOG_INFO, 
-            s_log_string("msg", "bootstrapping legion manager"));
+            s_log_string("msg", "bootstrapping legion server"));
 
-        manager_bootstrap();
+        server_bootstrap();
     } else {
         fprintf(stderr, "error: unknown subcommand: %s\n", sub_cmd);
     }
 }
 
 static void
-worker_cmd(rattler_cmd *cmd, int argc, char **argv)
+agent_cmd(rattler_cmd *cmd, int argc, char **argv)
 {
     const char *port = rattler_flag_string(cmd, "port");
     if (port == NULL || port[0] == '\0') {
-        fprintf(stderr, "error: manager port is required\n");
+        fprintf(stderr, "error: server port is required\n");
         exit(1);
     }
 
     const char *server = rattler_flag_string(cmd, "server");
     if (server == NULL || server[0] == '\0') {
-        fprintf(stderr, "error: manager address is required\n");
+        fprintf(stderr, "error: server address is required\n");
         exit(1);
     }
 
@@ -97,11 +97,11 @@ worker_cmd(rattler_cmd *cmd, int argc, char **argv)
 
     const char *listen_addr = rattler_flag_string(cmd, "listen-addr");
     if (port == NULL || port[0] == '\0') {
-        fprintf(stderr, "error: worker listen address is required\n");
+        fprintf(stderr, "error: agent listen address is required\n");
         exit(1);
     }
 
-    worker_config_t config = {
+    agent_config_t config = {
         .server = (char*)server,
         .port = (char*)port,
         .token = (char*)token,
@@ -109,7 +109,7 @@ worker_cmd(rattler_cmd *cmd, int argc, char **argv)
     };
 
     if (argc < 1) {
-        worker_start(&config);
+        agent_start(&config);
         return;
     }
 
@@ -117,13 +117,13 @@ worker_cmd(rattler_cmd *cmd, int argc, char **argv)
 
     if (strcmp(sub_cmd, "join") == 0) {
         s_log(S_LOG_INFO, 
-            s_log_string("msg", "bootstrapping legion worker"));
+            s_log_string("msg", "bootstrapping legion agent"));
 
-        worker_bootstrap(&config);
+        agent_bootstrap(&config);
 
-        // POST token to manager and get CA if not exists
+        // POST token to server and get CA if not exists
         // start http server
-        // open websocket to manager over mTLS 
+        // open websocket to server over mTLS 
     } else {
         fprintf(stderr, "error: unknown subcommand: %s\n", sub_cmd);
     }
@@ -137,10 +137,10 @@ signal_handler(int sig)
 {
     (void)sig;
 
-    if (legion_cmd == LEGION_CMD_MANAGER) {
-        manager_stop();
-    } else if (legion_cmd == LEGION_CMD_WORKER) {
-        worker_stop();
+    if (legion_cmd == LEGION_CMD_SERVER) {
+        server_stop();
+    } else if (legion_cmd == LEGION_CMD_AGENT) {
+        agent_stop();
     }
 
     exit(0);
@@ -159,25 +159,25 @@ main(int argc, char **argv)
     rattler_set_version(root, STR(legion_version));
     rattler_persistent_bool(root, "verbose", 'v', false, "verbose output");
 
-    rattler_cmd *manager = rattler_new_command(
-        "manager [init]",
+    rattler_cmd *server = rattler_new_command(
+        "server [init]",
         "Manage the legion system",
-        "manager runs the legion manager daemon.\n"
+        "server runs the legion server daemon.\n"
         "Some commands require additional arguments, such as init.\n");
-    manager->cmd = manager_cmd;
-    rattler_add_command(root, manager);
+    server->cmd = server_cmd;
+    rattler_add_command(root, server);
 
-    rattler_cmd *worker = rattler_new_command(
-        "worker [join]",
-        "Run a legion worker",
-        "worker runs the legion worker daemon.\n"
+    rattler_cmd *agent = rattler_new_command(
+        "agent [join]",
+        "Run a legion agent",
+        "agent runs the legion agent daemon.\n"
         "Some commands require additional arguments, such as join.\n");
-    worker->cmd = worker_cmd;
-    rattler_flags_string(worker, "listen-addr", 'l', "", "listen address");
-    rattler_flags_string(worker, "port", 'p', "", "manager port");
-    rattler_flags_string(worker, "server", 's', "", "manager address");
-    rattler_flags_string(worker, "token", 't', "", "legion join token");
-    rattler_add_command(root, worker);
+    agent->cmd = agent_cmd;
+    rattler_flags_string(agent, "listen-addr", 'l', "", "listen address");
+    rattler_flags_string(agent, "port", 'p', "", "server port");
+    rattler_flags_string(agent, "server", 's', "", "server address");
+    rattler_flags_string(agent, "token", 't', "", "legion join token");
+    rattler_add_command(root, agent);
 
     rattler_execute(root, argc, argv);
     rattler_free(root);

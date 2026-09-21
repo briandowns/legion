@@ -25,28 +25,28 @@
  * SUCH DAMAGE.
  */
 
-#ifndef __MANAGER_H
-#define __MANAGER_H
+#ifndef __AGENT_H
+#define __AGENT_H
+
+#include "node.h"
+
+typedef struct {
+    char *server;
+    char *port;
+    char *token;
+    char *listen_addr;
+} agent_config_t;
 
 int
-manager_init(void);
+agent_init(void);
 
 int
-manager_start(void);
+agent_start(const agent_config_t *config);
 
 int
-manager_stop(void);
+agent_stop(void);
 
 int
-manager_bootstrap(void);
+agent_bootstrap(const agent_config_t *config);
 
-int
-manager_token_generate(const char *ca_cert_path);
-
-int
-manager_token_verify(const char *token);
-
-int
-manager_token_verify_ca_hash(const char *token, const char *ca_cert_path);
-
-#endif /** end __MANAGER_H */
+#endif /** end __AGENT_H */

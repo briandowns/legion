@@ -274,7 +274,7 @@ FAIL:
 
 /**
  * Create a leaf certificate signed by the CA, usable for both TLS
- * server auth (the manager's listener) and TLS client auth (a
+ * server auth (the server's listener) and TLS client auth (a
  * node's outbound mTLS connection). Returns NULL on failure.
  */
 static X509*
@@ -334,8 +334,8 @@ create_leaf_certificate(EVP_PKEY *key, EVP_PKEY *ca_key, X509 *ca_cert,
         goto FAIL;
     }
 
-    // both serverAuth and clientAuth: the manager uses this cert
-    // to listen, the worker uses the same shape of cert to dial
+    // both serverAuth and clientAuth: the server uses this cert
+    // to listen, the agent uses the same shape of cert to dial
     // out over mTLS.
     if (add_extension(ca_cert, cert, NID_ext_key_usage,
             "serverAuth,clientAuth") != 0) {
