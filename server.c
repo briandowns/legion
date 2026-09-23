@@ -236,14 +236,17 @@ register_handler(papago_request_t *req, papago_response_t *res,
     memset(&reg_msg, 0, sizeof(register_msg_t));
     memset(&node_capacity, 0, sizeof(node_capacity_t));
 
+    const char *hostname_tmp = NULL;
+    const char *listen_addr_tmp = NULL;
+    const char *podman_version_tmp = NULL;
+
     json_t *labels_array = NULL;
     int ret = json_unpack_ex(root, &error, 0,
-        //"{s:s, s:s, s:i, s:s, s:s, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}", 
-         "{s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
-            "hostname", &reg_msg.payload.hostname,
-            "listen_addr", &reg_msg.payload.listen_addr,
+        "{s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
+            "hostname", &hostname_tmp,
+            "listen_addr", &listen_addr_tmp,
             "status", &reg_msg.payload.status,
-            "podman_version", &reg_msg.payload.podman_version,
+            "podman_version", &podman_version_tmp,
             "labels", &labels_array,
             "label_count", &reg_msg.payload.label_count,
             "capacity", 
@@ -257,15 +260,19 @@ register_handler(papago_request_t *req, papago_response_t *res,
             "disk_available_bytes", &node_capacity.disk_available_bytes);
     if (ret != 0) {
         s_log(S_LOG_ERROR, s_log_string("msg",
-            "json_unpack failed to map all register fields"));
-        printf("Unpack Error Status: %d\n", ret);
-        printf("Error Message: %s\n", error.text);
-        printf("Error Source: %s\n", error.source);
-        printf("Error Line/Col: %d:%d\n", error.line, error.column);
+            "json_unpack failed to map all register fields"),
+            s_log_int("status", ret), s_log_string("error", error.text),
+            s_log_int("line", error.line), s_log_int("column", error.column));
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
         return;
     }
+    strncpy(reg_msg.payload.hostname, hostname_tmp,
+        sizeof(reg_msg.payload.hostname) - 1);
+    strncpy(reg_msg.payload.listen_addr, listen_addr_tmp,
+        sizeof(reg_msg.payload.listen_addr) - 1);
+    strncpy(reg_msg.payload.podman_version, podman_version_tmp,
+        sizeof(reg_msg.payload.podman_version) - 1);
     
     if (json_is_array(labels_array)) {
         size_t index;
@@ -320,6 +327,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
 
     json_decref(root);
 
+    papago_res_header(res, "X-Legion-Node-ID", node_id);
     papago_res_header(res, PAPAGO_REQUEST_HEADER_CONTENT_TYPE, "application/x-pem-file");
     papago_res_sendfile(register_server, res, DATA_DIR "/server/tls/ca.crt");
 }
@@ -467,6 +475,8 @@ run_http_server(void *user_data)
     primary_config.enable_ssl = true;
     primary_config.enable_compression = true;
 
+
+
     papago_route(register_server, PAPAGO_POST, API_URL_BASE "/register", register_handler, NULL);
 
     papago_route(primary_server, PAPAGO_POST, API_URL_BASE "/node/:id/heartbeat", node_heartbeat_handler, NULL);
@@ -491,7 +501,7 @@ run_http_server(void *user_data)
             .user_data = NULL,
         };
         papago_middleware_add(servers[i].server, &structured_logger);
-    
+
         if (i == 0) {
             if (pthread_create(&register_http_thread, NULL, start_server, &servers[i]) != 0) {
                 s_log(S_LOG_ERROR,
@@ -507,7 +517,7 @@ run_http_server(void *user_data)
 
         }
     }
-    
+
     pthread_join(register_http_thread, NULL);
     pthread_join(primary_http_thread, NULL);
 

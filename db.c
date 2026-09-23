@@ -264,7 +264,7 @@ db_node_create_heartbeat(const char *id, const node_capacity_t *cap)
         "    disk_available_bytes = excluded.disk_available_bytes;";
 
     const char *update_node_sql =
-        "UPDATE nodes SET last_seen_at = ? WHERE id = ?;";
+        "UPDATE nodes SET last_heartbeat_at = ? WHERE id = ?;";
 
     sqlite3_stmt *stmt = NULL;
     time_t now = time(NULL);

@@ -28,6 +28,7 @@
 #ifndef __DB_H
 #define __DB_H
 
+#include <sys/param.h>
 #include <time.h>
 
 #include <sqlite3.h>
@@ -63,10 +64,10 @@ typedef enum {
 
 typedef struct {
 	char id[NODE_ID_LEN];
-    char *hostname;
-    char *listen_addr;
+    char hostname[MAXHOSTNAMELEN + 1];
+    char listen_addr[64];
 	node_status_t status;
-    char *podman_version;
+    char podman_version[32];
 	time_t last_heartbeat_at;
     char labels[MAX_LABELS][LABEL_LEN];
     int label_count;

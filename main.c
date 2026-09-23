@@ -120,10 +120,6 @@ agent_cmd(rattler_cmd *cmd, int argc, char **argv)
             s_log_string("msg", "bootstrapping legion agent"));
 
         agent_bootstrap(&config);
-
-        // POST token to server and get CA if not exists
-        // start http server
-        // open websocket to server over mTLS 
     } else {
         fprintf(stderr, "error: unknown subcommand: %s\n", sub_cmd);
     }

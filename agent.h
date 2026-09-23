@@ -38,9 +38,6 @@ typedef struct {
 } agent_config_t;
 
 int
-agent_init(void);
-
-int
 agent_start(const agent_config_t *config);
 
 int
