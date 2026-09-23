@@ -394,6 +394,104 @@ node_heartbeat_handler(papago_request_t *req, papago_response_t *res,
     }
 }
 
+void
+ws_on_connect(papago_ws_connection_t *conn)
+{
+    s_log(S_LOG_INFO, s_log_string("msg", "client connected"),
+        s_log_string("ip", papago_ws_get_client_ip(conn)));
+
+	papago_ws_send(conn, "");
+}
+
+void
+ws_on_message(papago_ws_connection_t *conn, const char *message,
+              size_t length, bool is_binary)
+{
+	PAPAGO_UNUSED(length);
+	PAPAGO_UNUSED(is_binary);
+
+    json_error_t error;
+    json_t *root = json_loads(message, JSON_DISABLE_EOF_CHECK, &error);
+    if (root == NULL) {
+        s_log(S_LOG_ERROR, s_log_string("msg", "failed parsing JSON message"),
+            s_log_string("error", error.text));
+	    papago_ws_send(conn, "{\"error\": \"failed parsing JSON message\"}");
+        return;
+    }
+
+    if (!json_is_object(root)) {
+        s_log(S_LOG_ERROR, s_log_string("msg",
+            "root element is not a JSON object"));
+        json_decref(root);
+	    papago_ws_send(conn, "{\"error\": \"object not JSON\"}");
+        return;
+    }
+
+    const msg_type_t msg_type = MSG_TYPE_UNKNOWN;
+    const char *node_id;
+    json_t payload;
+
+    int ret = json_unpack(root, "{s:s, s:s, s:O}",
+        "type", &msg_type, "node_id", &node_id, "payload", &payload);
+    if (ret != 0) {
+        s_log(S_LOG_ERROR, s_log_string("msg", "failed to map all fields"));
+	    papago_ws_send(conn, "{\"error\": \"failed to map all fields\"}");
+        json_decref(root);
+        return;
+    }
+
+    switch (msg_type) {
+        case MSG_TYPE_HB:
+            node_capacity_t node_capacity;
+            memset(&node_capacity, 0, sizeof(node_capacity_t));
+
+            ret = json_unpack(&payload,
+                    "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}", 
+                        "cpu_cores", &node_capacity.cpu_cores,
+                        "load_avg_1m", &node_capacity.load_avg_1m,
+                        "load_avg_5m", &node_capacity.load_avg_5m,
+                        "load_avg_15m", &node_capacity.load_avg_15m,
+                        "mem_total_bytes", &node_capacity.mem_total_bytes,
+                        "mem_available_bytes", &node_capacity.mem_available_bytes,
+                        "disk_total_bytes", &node_capacity.disk_total_bytes,
+                        "disk_available_bytes", &node_capacity.disk_available_bytes);
+            if (ret != 0) {
+                s_log(S_LOG_ERROR, s_log_string("msg",
+                    "json_unpack failed to map all fields"));
+                return;
+            }
+
+            ret = db_node_create_heartbeat(node_id, &node_capacity);
+            if (ret != 0) {
+                s_log(S_LOG_ERROR,
+                    s_log_string("msg", "failed to store heartbeat")); 
+                return;
+            }
+
+            papago_ws_send(conn, "");
+            break;
+        default:
+            s_log(S_LOG_ERROR, s_log_string("msg", "unrecognized msg type"));
+	        papago_ws_send(conn, "{\"error\": \"unrecognized msg type\"}");
+            return;
+    }
+
+}
+
+void
+ws_on_close(papago_ws_connection_t *conn)
+{
+    s_log(S_LOG_INFO, s_log_string("msg", "disconnected"),
+        s_log_string("ip", papago_ws_get_client_ip(conn)));
+}
+
+void
+ws_on_error(papago_ws_connection_t *conn, const char *error)
+{
+    s_log(S_LOG_ERROR, s_log_string("msg", error));
+        s_log_string("ip", papago_ws_get_client_ip(conn));
+}
+
 static bool
 logger_before(papago_request_t *req, papago_response_t *res, void *user_data)
 {
@@ -452,34 +550,29 @@ start_server(void *user_data)
 void*
 run_http_server(void *user_data)
 {
-    (void)user_data;
+    PAPAGO_UNUSED(user_data);
 
     register_server = papago_new();
     primary_server = papago_new();
 
     papago_config_t register_config = papago_default_config();
-    register_config.http_port = 8080;
+    register_config.http_port = 8181;
+    register_config.enable_compression = true;
+    register_config.require_client_cert = false;
+    register_config.enable_ssl = true;
     register_config.ca_cert_file = DATA_DIR "/server/tls/ca.crt";
     register_config.cert_file = DATA_DIR "/server/tls/server.crt";
     register_config.key_file = DATA_DIR "/server/tls/server.key";
-    register_config.require_client_cert = false;
-    register_config.enable_ssl = true;
-    register_config.enable_compression = true;
 
     papago_config_t primary_config = papago_default_config();
-    primary_config.http_port = 8181;
+    primary_config.http_port = 8282;
+    primary_config.enable_ssl = true;
+    primary_config.require_client_cert = true;
     primary_config.ca_cert_file = DATA_DIR "/server/tls/ca.crt";
     primary_config.cert_file = DATA_DIR "/server/tls/server.crt";
     primary_config.key_file = DATA_DIR "/server/tls/server.key";
-    primary_config.require_client_cert = false;
-    primary_config.enable_ssl = true;
-    primary_config.enable_compression = true;
-
-
 
     papago_route(register_server, PAPAGO_POST, API_URL_BASE "/register", register_handler, NULL);
-
-    papago_route(primary_server, PAPAGO_POST, API_URL_BASE "/node/:id/heartbeat", node_heartbeat_handler, NULL);
 
     struct server servers[2] = {
         {
@@ -555,6 +648,7 @@ server_stop(void)
 {
     close(kq);
     papago_destroy(register_server);
+    papago_destroy(primary_server);
 
     return 0;
 }

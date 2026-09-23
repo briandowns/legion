@@ -38,7 +38,7 @@
 #include <curl/curl.h>
 #include <jansson.h>
 #include <logger.h>
-#include <papago.h>
+#include <papago_wsc.h>
 
 #include "agent.h"
 #include "db.h"
@@ -47,7 +47,58 @@
 #define TOKEN_POST_PAYLOAD "{\"token\": \"%s\"}"
 
 static int kq;
+static papago_wsc_t *client = NULL;
+static char node_id[NODE_ID_LEN];
+
 CURL *curl;
+
+static void
+ws_on_connect(papago_wsc_t *client)
+{
+	printf("[connect] connected to server (mTLS handshake succeeded)\n");
+
+	papago_wsc_send(client,
+	    "{\"type\":\"message\",\"text\":\"Hello over mTLS!\"}");
+}
+
+static void
+ws_on_message(papago_wsc_t *client, const char *message, size_t length,
+           bool is_binary)
+{
+	PAPAGO_WSC_UNUSED(length);
+
+	if (is_binary) {
+		printf("[message] received %zu bytes of binary data\n", length);
+		return;
+	}
+
+	printf("[message] %s\n", message);
+
+	if (strstr(message, "\"type\":\"welcome\"") != NULL) {
+		papago_wsc_send(client,
+		    "{\"type\":\"message\",\"text\":\"bye over mTLS!\"}");
+	} else if (strstr(message, "\"type\":\"echo\"") != NULL) {
+		papago_wsc_stop(client);
+	}
+}
+
+static void
+ws_on_close(papago_wsc_t *client)
+{
+	PAPAGO_WSC_UNUSED(client);
+
+	printf("[close] connection closed\n");
+}
+
+static void
+ws_on_error(papago_wsc_t *client, const char *error)
+{
+	PAPAGO_WSC_UNUSED(client);
+
+	fprintf(stderr, "[error] %s\n", error);
+	fprintf(stderr, "make sure server.crt/client.crt/ca.crt were "
+	    "generated with ./generate_certs.sh\n");
+}
 
 void*
 run_healthcheck(void *data)
@@ -78,6 +129,24 @@ run_healthcheck(void *data)
             s_log(S_LOG_ERROR, s_log_string("msg", err));
             break;
         }
+
+        char *ncs = node_capacity_to_json_string(&node_cap);
+
+        json_t *msg = json_pack("{s:i, s:s, s:s}",
+            "type", MSG_TYPE_HB,
+            "node_id", node_id,
+            "payload", ncs);
+        if (ret != 0) {
+            s_log(S_LOG_ERROR, s_log_string("msg", err));
+            json_decref(msg);
+            break;
+        }
+
+        char *data = json_dumps(msg, 0);
+        papago_wsc_send(client, &data);
+
+        json_decref(msg);
+        free(ncs);
     }
 
     close(kq);
@@ -104,14 +173,13 @@ agent_start(const agent_config_t *config)
 
     FILE *fp = fopen(DATA_DIR "/node/id", "r");
     if (fp == NULL) {
-        perror("Error opening file");
+        perror("error opening file");
         return EXIT_FAILURE;
     }
 
-    char node_id[NODE_ID_LEN];
 
     if (fgets(node_id, NODE_ID_LEN, fp) == NULL) {
-        printf("The file is empty or an error occurred.\n");
+        printf("file is empty or an error occurred.\n");
         return EXIT_FAILURE;
     }
     fclose(fp);
@@ -261,7 +329,7 @@ agent_bootstrap(const agent_config_t *config)
             s_log_string("path", DATA_DIR "/agent/tls"));
         return 1;
     }
-    
+
     if (!FILE_EXISTS(DATA_DIR "/agent/tls/ca.crt")) {
         curl = curl_easy_init();
         if (curl == NULL) {
@@ -328,21 +396,21 @@ agent_bootstrap(const agent_config_t *config)
 
         json_t *post_json = json_pack_ex(&error, 0,
             "{s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
-            "hostname", hostname,
-            "listen_addr", config->listen_addr,
-            "status", NODE_READY,
-            "podman_version", "4.0.0",
-            "labels", labels,
-            "label_count", 2,
-            "capacity", 
-            "cpu_cores", node_cap.cpu_cores,
-            "load_avg_1m", node_cap.load_avg_1m,
-            "load_avg_5m", node_cap.load_avg_5m,
-            "load_avg_15m", node_cap.load_avg_15m,
-            "mem_total_bytes", node_cap.mem_total_bytes,
-            "mem_available_bytes", node_cap.mem_available_bytes,
-            "disk_total_bytes", node_cap.disk_total_bytes,
-            "disk_available_bytes", node_cap.disk_available_bytes);
+                "hostname", hostname,
+                "listen_addr", config->listen_addr,
+                "status", NODE_READY,
+                "podman_version", "4.0.0",
+                "labels", labels,
+                "label_count", 2,
+                "capacity", 
+                "cpu_cores", node_cap.cpu_cores,
+                "load_avg_1m", node_cap.load_avg_1m,
+                "load_avg_5m", node_cap.load_avg_5m,
+                "load_avg_15m", node_cap.load_avg_15m,
+                "mem_total_bytes", node_cap.mem_total_bytes,
+                "mem_available_bytes", node_cap.mem_available_bytes,
+                "disk_total_bytes", node_cap.disk_total_bytes,
+                "disk_available_bytes", node_cap.disk_available_bytes);
         if (post_json == NULL) {
             s_log(S_LOG_ERROR,
                 s_log_string("component", "agent"),

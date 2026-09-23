@@ -46,6 +46,17 @@
 #define TOKEN_CHARSET "abcdefghijklmnopqrstuvwxyz0123456789"
 #define TOKEN_HEADER "X-Legion-Token"
 
+typedef enum {
+    MSG_TYPE_UNKNOWN,
+    MSG_TYPE_HB
+} msg_type_t;
+
+typedef struct {
+    const msg_type_t type;
+    const char node_id;
+    void *payload;
+} ws_msg_t;
+
 /**
  * node_capacity_t
  */
@@ -90,4 +101,8 @@ node_token_verify_ca_hash(const char *token, const char *ca_cert_path);
 int
 node_capacity(node_capacity_t *cap, char *err, const size_t err_size);
 
+char*
+node_capacity_to_json_string(const node_capacity_t *node_cap);
+
 #endif /** end __NODE_H */
+

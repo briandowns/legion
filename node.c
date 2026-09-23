@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <jansson.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 
@@ -463,3 +464,30 @@ node_capacity(node_capacity_t *cap, char *err, const size_t err_size)
     return 0;
 }
 
+char*
+node_capacity_to_json_string(const node_capacity_t *node_cap)
+{
+    json_error_t error;
+    json_t *json = json_pack_ex(&error, 0,
+        "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
+            "cpu_cores", node_cap->cpu_cores,
+            "load_avg_1m", node_cap->load_avg_1m,
+            "load_avg_5m", node_cap->load_avg_5m,
+            "load_avg_15m", node_cap->load_avg_15m,
+            "mem_total_bytes", node_cap->mem_total_bytes,
+            "mem_available_bytes", node_cap->mem_available_bytes,
+            "disk_total_bytes", node_cap->disk_total_bytes,
+            "disk_available_bytes", node_cap->disk_available_bytes);
+    if (json == NULL) {
+        return NULL;
+    }
+
+    char *data = json_dumps(json, 0);
+    if (data == NULL) {
+        json_decref(json);
+        return NULL;
+    }
+ 
+    json_decref(json);
+    return data;
+}

@@ -13,6 +13,7 @@ CFLAGS  = -g -std=c2x -Wall -Wextra -fpic \
 LDFLAGS = -L/usr/local/lib \
           -lrattler \
           -lpapago \
+		  -lpapago_wsc \
           -lmaple \
           -lsqlite3 \
           -lssl \
