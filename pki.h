@@ -59,5 +59,18 @@ pki_generate_cert_and_key(const char *ca_key_path, const char *ca_cert_path,
                           const char *common_name, const char *san_ip,
                           int days, const char *key_path,
                           const char *cert_path);
+/**
+ * Generate a fresh keypair and a PKCS#10 CSR for it.
+ */
+int
+pki_generate_csr_and_key(const char *common_name, const char *san_ip,
+                         const char *key_path, const char *csr_path);
+
+/**
+ * Sign a CSR with the CA, producing a leaf certificate.
+ */
+int
+pki_sign_csr(const char *ca_key_path, const char *ca_cert_path,
+             const char *csr_path, int days, const char *cert_path);
 
 #endif /** end __PKI_H */

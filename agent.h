@@ -31,10 +31,13 @@
 #include "node.h"
 
 typedef struct {
+    char *cacert;
+    char *cert;
+    char *key;
+    char *listen_addr;
     char *server;
     char *port;
     char *token;
-    char *listen_addr;
 } agent_config_t;
 
 int

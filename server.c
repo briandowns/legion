@@ -80,19 +80,25 @@ server_bootstrap(void)
     mode_t mode = 0750;
     if (node_create_path(DATA_DIR "/server/tls", mode) == 0) {
         s_log(S_LOG_INFO, s_log_string("msg", "created directory path"),
+            s_log_string("component", "server"),
             s_log_string("path", DATA_DIR "/server/tls"));
     } else {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed to create directory path"),
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "failed to create directory path"),
+            s_log_string("component", "server"),
             s_log_string("path", DATA_DIR "/server/tls"));
         return 1;
     }
 
     if (node_create_path(DATA_DIR "/node", mode) == 0) {
         s_log(S_LOG_INFO, s_log_string("msg", "created directory path"),
-            s_log_string("path", DATA_DIR "/server/tls"));
+            s_log_string("component", "server"),
+            s_log_string("path", DATA_DIR "/server/node"));
     } else {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed to create directory path"),
-            s_log_string("path", DATA_DIR "/server/tls"));
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "failed to create directory path"),
+            s_log_string("component", "server"),
+            s_log_string("path", DATA_DIR "/server/node"));
         return 1;
     }
 
@@ -100,18 +106,21 @@ server_bootstrap(void)
     if (!FILE_EXISTS(DATA_DIR "/server/tls/ca.key") ||
         !FILE_EXISTS(DATA_DIR "/server/tls/ca.crt")) {
             s_log(S_LOG_INFO, 
-                s_log_string("msg", "generating CA certificate and key"));
+                s_log_string("msg", "generating CA certificate and key"),
+                s_log_string("component", "server"));
 
         ret = pki_generate_ca(DATA_DIR "/server/tls/ca.key",
             DATA_DIR "/server/tls/ca.crt", 10);
         if (ret != 0) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating CA certificate"));
+                s_log_string("msg", "error generating CA certificate"),
+                s_log_string("component", "server"));
             return 1;
         }
 
         s_log(S_LOG_INFO, 
             s_log_string("msg", "generating server certificate and key"));
+            s_log_string("component", "server"),
 
         ret = pki_generate_cert_and_key(DATA_DIR "/server/tls/ca.key",
             DATA_DIR "/server/tls/ca.crt", "legion-server", NULL, 3650,
@@ -119,18 +128,21 @@ server_bootstrap(void)
             DATA_DIR "/server/tls/server.crt");
         if (ret != 0) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating server certificate and key"));
+                s_log_string("msg", "error generating server certificate and key"),
+                s_log_string("component", "server"));
             return 1;
         }
     }
 
     if (!FILE_EXISTS(DATA_DIR "/node/token")) {
         s_log(S_LOG_INFO, 
-            s_log_string("msg", "generating server join token"));
+            s_log_string("msg", "generating server join token"),
+            s_log_string("component", "server"));
 
         if (node_token_generate(DATA_DIR "/server/tls/ca.crt") != 0) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating server join token"));
+                s_log_string("msg", "error generating server join token"),
+                s_log_string("component", "server"));
             return 1;
         }
     }
@@ -178,6 +190,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     if (token == NULL || token[0] == '\0') {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "missing token header"));
+            s_log_string("component", "server"),
         papago_res_set_status(res, PAPAGO_STATUS_UNAUTHORIZED);
         papago_res_send(res, ERR_UNAUTHORIZED);
         return;
@@ -188,6 +201,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     if (token_file == NULL) {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "failed to open token file"));
+            s_log_string("component", "server"),
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
         return;
@@ -195,6 +209,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     if (fgets(expected_token, sizeof(expected_token), token_file) == NULL) {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "failed to read token from file"));
+            s_log_string("component", "server"),
         fclose(token_file);
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
@@ -211,6 +226,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     if (strcmp(token, expected_token) != 0) {
         s_log(S_LOG_ERROR,
             s_log_string("msg", "invalid token header"));
+            s_log_string("component", "server"),
         papago_res_set_status(res, PAPAGO_STATUS_UNAUTHORIZED);
         papago_res_send(res, ERR_UNAUTHORIZED);
         return;
@@ -219,14 +235,17 @@ register_handler(papago_request_t *req, papago_response_t *res,
     json_error_t error;
     json_t *root = json_loads(papago_req_body(req), JSON_DISABLE_EOF_CHECK, &error);
     if (root == NULL) {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed parsing JSON message"),
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "failed parsing JSON message"),
+            s_log_string("component", "server"),
             s_log_string("error", error.text));
         return;
     }
 
     if (!json_is_object(root)) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "root element is not a JSON object"));
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "root element is not a JSON object"));
+            s_log_string("component", "server"),
         json_decref(root);
         return;
     }
@@ -259,8 +278,9 @@ register_handler(papago_request_t *req, papago_response_t *res,
             "disk_total_bytes", &node_capacity.disk_total_bytes,
             "disk_available_bytes", &node_capacity.disk_available_bytes);
     if (ret != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "json_unpack failed to map all register fields"),
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", "json_unpack failed to map all register fields"),
+            s_log_string("component", "server"),
             s_log_int("status", ret), s_log_string("error", error.text),
             s_log_int("line", error.line), s_log_int("column", error.column));
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
@@ -273,7 +293,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
         sizeof(reg_msg.payload.listen_addr) - 1);
     strncpy(reg_msg.payload.podman_version, podman_version_tmp,
         sizeof(reg_msg.payload.podman_version) - 1);
-    
+
     if (json_is_array(labels_array)) {
         size_t index;
         json_t *value;
@@ -291,6 +311,7 @@ register_handler(papago_request_t *req, papago_response_t *res,
     }
 
     s_log(S_LOG_INFO, s_log_string("msg", "received register message"),
+        s_log_string("component", "server"),
         s_log_string("hostname", reg_msg.payload.hostname),
         s_log_int("label_count", reg_msg.payload.label_count),
         s_log_string("podman_version", reg_msg.payload.podman_version));
@@ -300,29 +321,33 @@ register_handler(papago_request_t *req, papago_response_t *res,
 
     char node_id[NODE_ID_LEN];
     if (db_node_create(&reg_msg.payload, node_id) != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "failed to create node in database"));
+        s_log(S_LOG_ERROR,
+            s_log_string("component", "server"),
+            s_log_string("msg", "failed to create node in database"));
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
         return;
     }
-    printf("id: %s\n", node_id);
 
     node_t node;
     if (db_node_get(node_id, &node) != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "failed to add node capacity in database"));
+        s_log(S_LOG_ERROR,
+            s_log_string("component", "server"),
+            s_log_string("msg", "failed to add node capacity in database"));
         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
         papago_res_send(res, ERR_INTERNAL_SERVER);
         return;
     }
 
     if (db_node_create_heartbeat(node_id, &node_capacity) != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed to store heartbeat")); 
+        s_log(S_LOG_ERROR,
+            s_log_string("component", "server"),
+            s_log_string("msg", "failed to store heartbeat")); 
         return;
     }
     s_log(S_LOG_INFO,
         s_log_string("msg", "node registered successfully"),
+        s_log_string("component", "server"),
         s_log_string("hostname", reg_msg.payload.hostname));
 
     json_decref(root);
@@ -332,72 +357,73 @@ register_handler(papago_request_t *req, papago_response_t *res,
     papago_res_sendfile(register_server, res, DATA_DIR "/server/tls/ca.crt");
 }
 
-static void
-node_heartbeat_handler(papago_request_t *req, papago_response_t *res,
-                       void *user_data)
-{
-    PAPAGO_UNUSED(user_data);
-
-    const char *id = papago_req_param(req, "id");
-    if (id == NULL || id[0] == '\0') {
-        papago_res_set_status(res, PAPAGO_STATUS_BAD_REQUEST);
-        papago_res_send(res, "");
-        return;
-    }
-
-    node_t node;
-    int ret = db_node_get(id, &node);
-    if (ret != 0) {
-        papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
-        papago_res_send(res, ERR_INTERNAL_SERVER);
-        return;
-    }
-
-    json_error_t error;
-    json_t *root = json_loads(papago_req_body(req), JSON_DISABLE_EOF_CHECK, &error);
-    if (root == NULL) {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed parsing JSON message"),
-            s_log_string("error", error.text));
-        return;
-    }
-
-    if (!json_is_object(root)) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "root element is not a JSON object"));
-        json_decref(root);
-        return;
-    }
-
-    node_capacity_t node_capacity;
-    memset(&node_capacity, 0, sizeof(node_capacity_t));
-
-    ret = json_unpack(root,
-        "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}", 
-            "cpu_cores", &node_capacity.cpu_cores,
-            "load_avg_1m", &node_capacity.load_avg_1m,
-            "load_avg_5m", &node_capacity.load_avg_5m,
-            "load_avg_15m", &node_capacity.load_avg_15m,
-            "mem_total_bytes", &node_capacity.mem_total_bytes,
-            "mem_available_bytes", &node_capacity.mem_available_bytes,
-            "disk_total_bytes", &node_capacity.disk_total_bytes,
-            "disk_available_bytes", &node_capacity.disk_available_bytes);
-    if (ret != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg",
-            "json_unpack failed to map all fields"));
-        return;
-    }
-
-    ret = db_node_create_heartbeat(id, &node_capacity);
-    if (ret != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg", "failed to store heartbeat")); 
-        return;
-    }
-}
-
+// static void
+// node_heartbeat_handler(papago_request_t *req, papago_response_t *res,
+//                        void *user_data)
+// {
+//     PAPAGO_UNUSED(user_data);
+//
+//     const char *id = papago_req_param(req, "id");
+//     if (id == NULL || id[0] == '\0') {
+//         papago_res_set_status(res, PAPAGO_STATUS_BAD_REQUEST);
+//         papago_res_send(res, "");
+//         return;
+//     }
+//
+//     node_t node;
+//     int ret = db_node_get(id, &node);
+//     if (ret != 0) {
+//         papago_res_set_status(res, PAPAGO_STATUS_INTERNAL_ERROR);
+//         papago_res_send(res, ERR_INTERNAL_SERVER);
+//         return;
+//     }
+//
+//     json_error_t error;
+//     json_t *root = json_loads(papago_req_body(req), JSON_DISABLE_EOF_CHECK, &error);
+//     if (root == NULL) {
+//         s_log(S_LOG_ERROR, s_log_string("msg", "failed parsing JSON message"),
+//             s_log_string("error", error.text));
+//         return;
+//     }
+//
+//     if (!json_is_object(root)) {
+//         s_log(S_LOG_ERROR, s_log_string("msg",
+//             "root element is not a JSON object"));
+//         json_decref(root);
+//         return;
+//     }
+//
+//     node_capacity_t node_capacity;
+//     memset(&node_capacity, 0, sizeof(node_capacity_t));
+//
+//     ret = json_unpack(root,
+//         "{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}", 
+//             "cpu_cores", &node_capacity.cpu_cores,
+//             "load_avg_1m", &node_capacity.load_avg_1m,
+//             "load_avg_5m", &node_capacity.load_avg_5m,
+//             "load_avg_15m", &node_capacity.load_avg_15m,
+//             "mem_total_bytes", &node_capacity.mem_total_bytes,
+//             "mem_available_bytes", &node_capacity.mem_available_bytes,
+//             "disk_total_bytes", &node_capacity.disk_total_bytes,
+//             "disk_available_bytes", &node_capacity.disk_available_bytes);
+//     if (ret != 0) {
+//         s_log(S_LOG_ERROR, s_log_string("msg",
+//             "json_unpack failed to map all fields"));
+//         return;
+//     }
+//
+//     ret = db_node_create_heartbeat(id, &node_capacity);
+//     if (ret != 0) {
+//         s_log(S_LOG_ERROR, s_log_string("msg", "failed to store heartbeat")); 
+//         return;
+//     }
+// }
+//
 void
 ws_on_connect(papago_ws_connection_t *conn)
 {
-    s_log(S_LOG_INFO, s_log_string("msg", "client connected"),
+    s_log(S_LOG_INFO,\
+        s_log_string("msg", "client connected"),
         s_log_string("ip", papago_ws_get_client_ip(conn)));
 
 	papago_ws_send(conn, "");
@@ -537,11 +563,11 @@ start_server(void *user_data)
 {
     struct server *svr = (struct server*)user_data;
 
-    s_log(S_LOG_INFO, s_log_string("msg", "starting server"));
-
     if (papago_start(svr->server, svr->config) != 0) {
-        s_log(S_LOG_ERROR, s_log_string("msg", papago_error()));
-        papago_destroy(register_server);
+        s_log(S_LOG_ERROR,
+            s_log_string("msg", papago_error()),
+            s_log_string("component", "server"));
+        papago_destroy(svr->server);
     }
 
     return NULL;
@@ -556,7 +582,7 @@ run_http_server(void *user_data)
     primary_server = papago_new();
 
     papago_config_t register_config = papago_default_config();
-    register_config.http_port = 8181;
+    register_config.http_port = 8080;
     register_config.enable_compression = true;
     register_config.require_client_cert = false;
     register_config.enable_ssl = true;
@@ -565,7 +591,8 @@ run_http_server(void *user_data)
     register_config.key_file = DATA_DIR "/server/tls/server.key";
 
     papago_config_t primary_config = papago_default_config();
-    primary_config.http_port = 8282;
+    primary_config.http_port = 8181;
+    primary_config.ws_port = 8282;
     primary_config.enable_ssl = true;
     primary_config.require_client_cert = true;
     primary_config.ca_cert_file = DATA_DIR "/server/tls/ca.crt";
@@ -573,6 +600,8 @@ run_http_server(void *user_data)
     primary_config.key_file = DATA_DIR "/server/tls/server.key";
 
     papago_route(register_server, PAPAGO_POST, API_URL_BASE "/register", register_handler, NULL);
+
+    pthread_t register_http_thread, primary_http_thread;
 
     struct server servers[2] = {
         {
@@ -585,8 +614,6 @@ run_http_server(void *user_data)
         }
     };
 
-    pthread_t register_http_thread, primary_http_thread;
-
     for (int i = 0; i < 2; i++) {
         papago_middleware_t structured_logger = {
             .before    = logger_before,
@@ -598,12 +625,14 @@ run_http_server(void *user_data)
         if (i == 0) {
             if (pthread_create(&register_http_thread, NULL, start_server, &servers[i]) != 0) {
                 s_log(S_LOG_ERROR,
+                    s_log_string("component", "server"),
                     s_log_string("msg", "failed to register http thread"));
                 return NULL;
             }
         } else {
             if (pthread_create(&primary_http_thread, NULL, start_server, &servers[i]) != 0) {
                 s_log(S_LOG_ERROR,
+                    s_log_string("component", "server"),
                     s_log_string("msg", "failed to create primary http thread"));
                 return NULL;
             }
@@ -621,18 +650,21 @@ int
 server_start(void)
 {
     s_log(S_LOG_INFO, 
+        s_log_string("component", "server"),
         s_log_string("msg", "starting legion server"));
 
     pthread_t timer_thread, http_thread;
 
     if (pthread_create(&timer_thread, NULL, run_timer, NULL) != 0) {
         s_log(S_LOG_ERROR,
+            s_log_string("component", "server"),
             s_log_string("msg", "failed to create timer thread"));
         return 1;
     }
 
     if (pthread_create(&http_thread, NULL, run_http_server, NULL) != 0) {
         s_log(S_LOG_ERROR,
+            s_log_string("component", "server"),
             s_log_string("msg", "failed to create HTTP server thread"));
         return 1;
     }

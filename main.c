@@ -46,7 +46,7 @@
 enum {
     LEGION_CMD_SERVER = 0,
     LEGION_CMD_AGENT,
-} ;
+};
 
 static int legion_cmd = -1;
 
@@ -70,7 +70,8 @@ server_cmd(rattler_cmd *cmd, int argc, char **argv)
 
         server_bootstrap();
     } else {
-        fprintf(stderr, "error: unknown subcommand: %s\n", sub_cmd);
+        s_log(S_LOG_ERROR, s_log_string("msg", "unknown subcommand"),
+              s_log_string("cmd", sub_cmd));
     }
 }
 
@@ -89,26 +90,40 @@ agent_cmd(rattler_cmd *cmd, int argc, char **argv)
         exit(1);
     }
 
-    const char *token = rattler_flag_string(cmd, "token");
-    if (token == NULL || token[0] == '\0') {
-        fprintf(stderr, "error: token is required\n");
-        exit(1);
-    }
-
     const char *listen_addr = rattler_flag_string(cmd, "listen-addr");
-    if (port == NULL || port[0] == '\0') {
+    if (listen_addr == NULL || listen_addr[0] == '\0') {
         fprintf(stderr, "error: agent listen address is required\n");
         exit(1);
     }
 
-    agent_config_t config = {
-        .server = (char*)server,
-        .port = (char*)port,
-        .token = (char*)token,
-        .listen_addr = (char*)listen_addr
-    };
-
     if (argc < 1) {
+        const char *cacert = rattler_flag_string(cmd, "ca-cert");
+        if (cacert == NULL || cacert[0] == '\0') {
+            fprintf(stderr, "error: ca-cert required\n");
+            exit(1);
+        }
+
+        const char *cert = rattler_flag_string(cmd, "cert");
+        if (cert == NULL || cert[0] == '\0') {
+            fprintf(stderr, "error: cert required\n");
+            exit(1);
+        }
+
+        const char *key = rattler_flag_string(cmd, "key");
+        if (key == NULL || key[0] == '\0') {
+            fprintf(stderr, "error: key required\n");
+            exit(1);
+        }
+
+        agent_config_t config = {
+            .cacert = (char*)cacert,
+            .cert = (char*)cert,
+            .key = (char*)key,
+            .server = (char*)server,
+            .port = (char*)port,
+            .listen_addr = (char*)listen_addr
+        };
+
         agent_start(&config);
         return;
     }
@@ -116,8 +131,18 @@ agent_cmd(rattler_cmd *cmd, int argc, char **argv)
     const char *sub_cmd = argv[0];
 
     if (strcmp(sub_cmd, "join") == 0) {
-        s_log(S_LOG_INFO, 
-            s_log_string("msg", "bootstrapping legion agent"));
+        const char *token = rattler_flag_string(cmd, "token");
+        if (token == NULL || token[0] == '\0') {
+            fprintf(stderr, "error: token is required\n");
+            exit(1);
+        }
+
+        agent_config_t config = {
+            .server = (char*)server,
+            .port = (char*)port,
+            .token = (char*)token,
+            .listen_addr = (char*)listen_addr
+        };
 
         agent_bootstrap(&config);
     } else {
@@ -169,10 +194,13 @@ main(int argc, char **argv)
         "agent runs the legion agent daemon.\n"
         "Some commands require additional arguments, such as join.\n");
     agent->cmd = agent_cmd;
+    rattler_flags_string(agent, "ca-cert", 'C', "", "cert");
+    rattler_flags_string(agent, "cert", 'c', "", "cert");
+    rattler_flags_string(agent, "key", 'k', "", "key");
     rattler_flags_string(agent, "listen-addr", 'l', "", "listen address");
     rattler_flags_string(agent, "port", 'p', "", "server port");
     rattler_flags_string(agent, "server", 's', "", "server address");
-    rattler_flags_string(agent, "token", 't', "", "legion join token");
+    rattler_flags_string(agent, "token", 't', "", "legion join token (only on join)");
     rattler_add_command(root, agent);
 
     rattler_execute(root, argc, argv);
