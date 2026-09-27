@@ -366,6 +366,23 @@ agent_bootstrap(const agent_config_t *config)
         }
         curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)fp);
 
+        char node_id[NODE_ID_LEN];
+        memset(node_id, 0, NODE_ID_LEN);
+
+        node_gen_id(node_id);
+
+        FILE *nidfp = fopen(DATA_DIR "/node/id", "w");
+        if (nidfp == NULL) {
+            s_log(S_LOG_ERROR, s_log_string("msg", "failed to open file"),
+                s_log_string("file", DATA_DIR "/node/id"),
+                s_log_string("component", "agent"));
+            curl_slist_free_all(headers);
+            curl_easy_cleanup(curl);
+            return 1;
+        }
+        fprintf(nidfp, "%s\n", node_id);
+        fclose(nidfp);
+
         char hostname[HOST_NAME_MAX + 1]; 
 
         if (gethostname(hostname, sizeof(hostname)) != 0) {
@@ -393,7 +410,8 @@ agent_bootstrap(const agent_config_t *config)
         json_t *labels = json_pack("[s, s]", "region=us-east", "env=prod");
 
         json_t *post_json = json_pack_ex(&error, 0,
-            "{s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
+            "{s:s, s:s, s:s, s:i, s:s, s:O, s:i, s:{s:i, s:f, s:f, s:f, s:i, s:i, s:i, s:i}}",
+                "id", node_id,
                 "hostname", hostname,
                 "listen_addr", config->listen_addr,
                 "status", NODE_READY,
@@ -466,39 +484,34 @@ agent_bootstrap(const agent_config_t *config)
             s_log_string("msg", "generating agent certificate and key"),
             s_log_string("component", "agent"));
 
-        ret = pki_generate_cert_and_key(DATA_DIR "/agent/tls/ca.key",
-            DATA_DIR "/agent/tls/ca.crt", "legion-agent", NULL, 3650,
-            DATA_DIR "/agent/tls/agent.key",
-            DATA_DIR "/agent/tls/agent.crt");
-        if (ret != 0) {
+        FILE *key_fd = fopen(DATA_DIR "/agent/tls/agent.key", "w");
+        if (key_fd == NULL) {
             s_log(S_LOG_ERROR,
-                s_log_string("msg", "error generating server certificate and key"),
+                s_log_string("msg", strerror(errno)),
+                s_log_string("file", "agent.key"),
+                s_log_string("component", "agent"));
+            return 1;
+        }
+        fclose(key_fd);
+
+        FILE *cert_fd = fopen(DATA_DIR "/agent/tls/agent.crt", "w");
+        if (key_fd == NULL) {
+            s_log(S_LOG_ERROR,
+                s_log_string("msg", strerror(errno)),
+                s_log_string("file", "agent.crt"),
+                s_log_string("component", "agent"));
+            return 1;
+        }
+        fclose(cert_fd);
+
+        if (pki_generate_csr_and_key(node_id, config->listen_addr, DATA_DIR "/agent/tls/agent.key",
+            DATA_DIR "/agent/tls/agent.csr") != 0) {
+            s_log(S_LOG_ERROR,
+                s_log_string("msg", "error generating csr and key"),
                 s_log_string("component", "agent"));
             return 1;
         }
 
-        struct curl_header *type;
-        CURLHcode hres = curl_easy_header(curl, "X-Legion-Node-ID", 0, CURLH_HEADER, -1, &type);
-        if (hres != CURLHE_OK) {
-            s_log(S_LOG_ERROR, s_log_string("msg", "failed to fetch header"),
-                s_log_int("code", hres),
-                s_log_string("component", "agent"));
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-            return 1;
-        }
-
-        FILE *nidfp = fopen(DATA_DIR "/node/id", "w");
-        if (nidfp == NULL) {
-            s_log(S_LOG_ERROR, s_log_string("msg", "failed to open file"),
-                s_log_string("file", DATA_DIR "/node/id"),
-                s_log_string("component", "agent"));
-            curl_slist_free_all(headers);
-            curl_easy_cleanup(curl);
-            return 1;
-        }
-        fprintf(nidfp, "%s\n", type->value);
-        fclose(nidfp);
 
         curl_slist_free_all(headers);
         curl_easy_cleanup(curl);

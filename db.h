@@ -63,7 +63,7 @@ typedef enum {
 } task_observed_t;
 
 typedef struct {
-	char id[NODE_ID_LEN];
+	char id[NODE_ID_LEN + 1];
     char hostname[MAXHOSTNAMELEN + 1];
     char listen_addr[64];
 	node_status_t status;
@@ -112,7 +112,7 @@ db_close(void);
  * user defined buffer.
  */
 int
-db_node_create(const node_t *node, char *id);
+db_node_create(const node_t *node);
 
 int
 db_node_create_heartbeat(const char *id, const node_capacity_t *cap);

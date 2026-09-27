@@ -84,6 +84,12 @@ int
 node_token_generate(const char *ca_cert_path);
 
 /**
+ * node_gen_id generates a new UUID.
+ */
+void
+node_gen_id(char *out);
+
+/**
  * node_token_verify
  */
 int

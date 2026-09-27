@@ -207,13 +207,11 @@ node_labels_load(node_t *node)
 }
 
 int
-db_node_create(const node_t *node, char *id)
+db_node_create(const node_t *node)
 {
     const char *sql =
         "INSERT INTO nodes (id, hostname, listen_addr, status, last_heartbeat_at) "
         "VALUES (?, ?, ?, ?, ?);";
-
-    id_gen_uuid((char*)node->id);
 
     sqlite3_stmt *stmt;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) {
@@ -233,11 +231,6 @@ db_node_create(const node_t *node, char *id)
         return 1;
     }
     sqlite3_finalize(stmt);
-
-    if (id != NULL) {
-        memset(id, 0, NODE_ID_LEN);
-        snprintf(id, NODE_ID_LEN, "%s", node->id);
-    }
 
     return node_labels_replace(node);
 }

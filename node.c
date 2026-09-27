@@ -40,10 +40,20 @@
 #include <jansson.h>
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <uuid/uuid.h>
 
 #include "node.h"
 
 #define DIGITS "0123456789abcdef"
+
+void
+node_gen_id(char *out)
+{
+    uuid_t u;
+
+    uuid_generate_random(u);
+    uuid_unparse_lower(u, out);
+}
 
 int
 node_create_path(const char *path, mode_t mode)
